@@ -1,3 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE "tblArticles"
 (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
@@ -5,13 +6,3 @@ CREATE TABLE "tblArticles"
   paragraph VARCHAR(2000),
   title VARCHAR
 );
-CREATE FUNCTION uuid_generate_v1() RETURNS UUID;
-CREATE FUNCTION uuid_generate_v1mc() RETURNS UUID;
-CREATE FUNCTION uuid_generate_v3(namespace UUID, name TEXT) RETURNS UUID;
-CREATE FUNCTION uuid_generate_v4() RETURNS UUID;
-CREATE FUNCTION uuid_generate_v5(namespace UUID, name TEXT) RETURNS UUID;
-CREATE FUNCTION uuid_nil() RETURNS UUID;
-CREATE FUNCTION uuid_ns_dns() RETURNS UUID;
-CREATE FUNCTION uuid_ns_oid() RETURNS UUID;
-CREATE FUNCTION uuid_ns_url() RETURNS UUID;
-CREATE FUNCTION uuid_ns_x500() RETURNS UUID;
