@@ -29,10 +29,10 @@ const sizes = {
 };
 
 const imgDirectoryName = 'img';
-const publicDirectoryName = `public`;
-const originalDirectoryName = `original`;
-const articlesDirectoryName = `article`;
-const outputFileType = `png`;
+const publicDirectoryName = 'public';
+const originalDirectoryName = 'original';
+const articlesDirectoryName = 'article';
+const outputFileType = 'png';
 
 const directory = {
     [originalDirectoryName]: `./${publicDirectoryName}/${imgDirectoryName}/${originalDirectoryName}`,
