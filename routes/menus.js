@@ -1,7 +1,7 @@
-var express = require('express');
-var router = express.Router();
-var pg = require('pg');
-var config = {
+const express = require('express');
+const router = express.Router();
+const pg = require('pg');
+const config = {
     user: 'postgres', //env var: PGUSER
     database: 'nirvana', //env var: PGDATABASE
     host: 'localhost', // Server hosting the postgres database
@@ -10,7 +10,7 @@ var config = {
     idleTimeoutMillis: 30000 // how long a client is allowed to remain idle before being closed
 };
 
-var pool = new pg.Pool(config);
+const pool = new pg.Pool(config);
 
 router.get('/', function(req, res, next) {
     pool.connect(function(err, client, done) {
@@ -20,24 +20,53 @@ router.get('/', function(req, res, next) {
         });
     });
 });
-
+function sort(subMenu, parentId) {
+    if (subMenu.length === 0 || !subMenu.some((subMenuItem) => subMenuItem['parentId'])) {
+        return subMenu;
+    } else {
+        const rootMenu = subMenu.filter((subMenuItem) => subMenuItem.parentId === parentId);
+        subMenu = subMenu.filter((subMenuItem) => subMenuItem.parentId !== parentId);
+        rootMenu.map((rootMenuItem) => {
+            if (subMenu.some((subMenuItem) => subMenuItem.parentId === rootMenuItem.id)) {
+                rootMenuItem[rootMenuItem.id] = sort(subMenu, rootMenuItem.id);
+            }
+        });
+        return rootMenu;
+    }
+}
 router.get('/:name/:relation', function(req, res, next) {
+    const queryByMainMenuId = `
+        WITH RECURSIVE "tblSubMenu" AS (
+            SELECT m.*, 1 as "level"
+            FROM "tblMenu" m
+            WHERE m."parentId" is not null and m."parentId" = $1::uuid
+            UNION
+            SELECT m.*, "level" + 1 
+            FROM "tblMenu" m, "tblSubMenu" ms
+            WHERE m."parentId" = ms."id"
+        )
+        SELECT ms."id", ms."parentId", ms."title", ms."actionType", ms."action", ms."level" FROM "tblSubMenu" ms
+        inner join "tblMenuInfo" mi on mi."id" = ms."menuInfoId"
+        order by "title"`;
+
     pool.connect(function(err, client, done) {
-        var query  = 'select m."action", m."actionType", m."id", m."title" from "tblMenu" m ' +
-            'inner join "tblMenuInfo" mi on mi."id" = m."menuInfoId" where mi."name" = $1 and m."parentId" is null';
+        var query = `select m."action", m."actionType", m."id", m."title" from "tblMenu" m 
+                        inner join "tblMenuInfo" mi on mi."id" = m."menuInfoId" 
+                            where mi."name" = $1 and m."parentId" is null`;
         var parameters = [req.params.name];
         if (req.params.relation !== 'root') {
-            query = 'select m."action", m."actionType", m."title" from "tblMenu" m ' +
-                'inner join "tblMenuInfo" mi on mi."id" = m."menuInfoId" where mi."name" = $1 and m."parentId" = $2::uuid';
-            parameters.push(req.params.relation);
+            query = queryByMainMenuId;
+            parameters = [req.params.relation]
         }
         try {
-            client.query(query, parameters, function (err, result) {
-                console.log(err);
-                res.send(result.rows);
+            client.query(query, parameters, function(err, result) {
+                if (err) {
+                    res.send(err);
+                } else {
+                    res.send(sort(result.rows, parameters[0]));
+                    // res.send(result.rows);
+                }
             });
-        } catch(err) {
-            res.send(err);
         } finally {
             done(err);
         }

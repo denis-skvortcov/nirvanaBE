@@ -9,8 +9,13 @@ var index = require('./routes/index');
 var users = require('./routes/users');
 var articles = require('./routes/articles');
 var menu = require('./routes/menus');
+var images = require('./routes/images');
+
+const fileUpload = require('express-fileupload');
 
 var app = express();
+
+app.use(fileUpload());
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -34,6 +39,8 @@ app.use('/', index);
 app.use('/users', users);
 app.use('/api/articles', articles);
 app.use('/api/menu', menu);
+app.use('/api/images', images);
+
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
