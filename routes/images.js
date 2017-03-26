@@ -28,12 +28,15 @@ const sizes = {
     XXL: 4320
 };
 
-const directoryImg = 'img';
-const directoryPublic = `public`;
+const imgDirectoryName = 'img';
+const publicDirectoryName = `public`;
+const originalDirectoryName = `original`;
+const articlesDirectoryName = `article`;
+const outputFileType = `png`;
 
 const directory = {
-    original: `./${directoryPublic}/${directoryImg}/original`,
-    article: `./${directoryPublic}/${directoryImg}/article`
+    [originalDirectoryName]: `./${publicDirectoryName}/${imgDirectoryName}/${originalDirectoryName}`,
+    [articlesDirectoryName]: `./${publicDirectoryName}/${imgDirectoryName}/${articlesDirectoryName}`
 };
 
 function parsetListFiles(filesList) {
@@ -83,12 +86,14 @@ class ReverseDeferred extends Deferred {
 }
 
 function saveFile(file) {
-    const directoryOriginal = `./${directoryPublic}/${directoryImg}/original`;
+    const directoryOriginal = `./${publicDirectoryName}/${imgDirectoryName}/${originalDirectoryName}`;
     return createDirectory(directoryOriginal).then(() => {
-        return new Deferred(file.mv, `${directoryOriginal}/${file.name}`).promise.then(() => {
-            const directoryResizeImage = `./${directoryPublic}/${directoryImg}/` + String(Math.random()).substr(2);
+        const originameFileName = file.name;
+        const fileName = originameFileName.replace(path.extname(originameFileName), '');
+        return new Deferred(file.mv, `${directoryOriginal}/${originameFileName}`).promise.then(() => {
+            const directoryResizeImage = `./${publicDirectoryName}/${imgDirectoryName}/` + String(Math.random()).substr(2);
             return createDirectory(directoryResizeImage).then(() => {
-                 return createResizeImage(sharp(file.data), directoryResizeImage, file.name);
+                return createResizeImage(sharp(file.data), directoryResizeImage, fileName);
             });
         });
     });
@@ -112,7 +117,7 @@ function isResourceExists(path) {
 }
 
 function getResizedFileName(directory, imageName, newSize) {
-    return `${directory}/${imageName}-${newSize}.png`;
+    return `${directory}/${imageName}-${newSize}.${outputFileType}`;
 }
 
 function createResizeImage(image, directory, fileName) {
@@ -128,9 +133,9 @@ function createResizeImage(image, directory, fileName) {
             if (maxDimension > size) {
                 image.resize(width && size || null, height && size || null);
             }
-            const imagePathOpen = imagePath.replace(`/${directoryPublic}`, '');
+            const imagePathOpen = imagePath.replace(`./${publicDirectoryName}`, '');
             filesInfoCollection.push({imagePathOpen, sizeName});
-            image.png().toFile(imagePath);
+            image[outputFileType]().toFile(imagePath);
         });
         return {filesInfoCollection, originalFileName: fileName};
     });
@@ -139,38 +144,35 @@ function createResizeImage(image, directory, fileName) {
 function saveFilesListToDatabase(filesList, res, parameterCollection) {
     const originalFileNamesList = [];
     const newFilesList = {};
+    const fieldIdMarker = '<fileIdPlace>';
+
     filesList.forEach((fileInfo) => {
         originalFileNamesList.push(`('${fileInfo.originalFileName}')`);
         newFilesList[fileInfo.originalFileName] = fileInfo.filesInfoCollection.map((newFile) => {
-            return `('${newFile.imagePathOpen}', '${newFile.sizeName}', '<fileIdPlace>')`;
+            return `('${newFile.imagePathOpen}', '${newFile.sizeName}', '${fieldIdMarker}')`;
         });
     });
     const essenceToImageQuery = `insert into "tblEssenceToImage" ("originalFileName")
                                     values ${originalFileNamesList.join(', ')}
                                     returning "id", "originalFileName"`;
     pool.connect((err, client, done) => {
-        try {
-            client.query(essenceToImageQuery, []).then((result) => {
-                let query = 'insert into "tblImages" ("path", "size", "essenceToImageId") values ';
-                const insertedRows = result.rows.map((row) => {
-                    const values = newFilesList[row.originalFileName].map((newFile) => {
-                        return newFile.replace('<fileIdPlace>', row.id);
-                    });
-                    query += `${values.join(', ')}, `;
-                    return row.id;
+        client.query(essenceToImageQuery, []).then((result) => {
+            let query = 'insert into "tblImages" ("path", "size", "essenceToImageId") values ';
+            const insertedRows = result.rows.map((row) => {
+                const values = newFilesList[row.originalFileName].map((newFile) => {
+                    return newFile.replace(fieldIdMarker, row.id);
                 });
-                query = `${query.substr(0, query.length - 2)}`;
-                return client.query(query, []).then(() => {
-                    res.send(insertedRows);
-                });
-            }).catch((err) => res.status(500).send(err));
-        } finally {
-            done(err);
-        }
+                query += `${values.join(', ')}, `;
+                return row.id;
+            });
+            query = `${query.substr(0, query.length - 2)}`;
+            console.log(query);
+            return client.query(query, []).then(() => res.send(insertedRows));
+        }).catch((err) => res.status(500).send(err));
     });
 }
 
-router.post('/', function(req, res, next) {
+router.post('/', function (req, res, next) {
     if (!req.files) {
         return res.status(400).send('No files were uploaded.');
     }
@@ -199,8 +201,8 @@ router.post('/', function(req, res, next) {
         });
 });
 
-router.get('/:name', function(req, res, next) {
-    pool.connect(function(err, client, done) {
+router.get('/:name', function (req, res, next) {
+    pool.connect(function (err, client, done) {
         const queryCount = `select cast(count(1) as integer) as "recordsCount"
                           from "tblArticleInfo" ai
                           inner join "tblArticles" a on a."articleInfoId" = ai."id"
@@ -231,8 +233,8 @@ router.get('/:name', function(req, res, next) {
     });
 });
 
-router.get('/:name/:id', function(req, res, next) {
-    pool.connect(function(err, client, done) {
+router.get('/:name/:id', function (req, res, next) {
+    pool.connect(function (err, client, done) {
         const query = `select 
                         a."id",
                         a."title",
@@ -246,7 +248,7 @@ router.get('/:name/:id', function(req, res, next) {
         const parameters = [req.params.name, req.params.id];
 
         try {
-            client.query(query, parameters, function(err, result) {
+            client.query(query, parameters, function (err, result) {
                 if (err) {
                     res.send(err);
                 } else {
