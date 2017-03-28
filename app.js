@@ -41,7 +41,6 @@ app.use('/api/articles', articles);
 app.use('/api/menu', menu);
 app.use('/api/images', images);
 
-
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
   var err = new Error('Not Found');
