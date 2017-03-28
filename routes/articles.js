@@ -31,13 +31,13 @@ router.get('/:name', function(req, res, next) {
     pool.connect(function(err, client, done) {
         const queryCount = `select cast(count(1) as integer) as "recordsCount"
                           from "tblArticleInfo" ai
-                          inner join "tblArticles" a on a."articleInfoId" = ai."id"
+                          join "tblArticles" a on a."articleInfoId" = ai."id"
                           where ai."name" = $1`;
         const parameterCount = [req.params.name];
 
         const queryIds = `select a."id"
                           from "tblArticleInfo" ai
-                          inner join "tblArticles" a on a."articleInfoId" = ai."id"
+                          join "tblArticles" a on a."articleInfoId" = ai."id"
                           where ai."name" = $1
                           order by a."date" desc
                           limit $2 offset $3`;
@@ -61,18 +61,39 @@ router.get('/:name', function(req, res, next) {
 
 router.get('/:name/:id', function(req, res, next) {
     pool.connect(function(err, client, done) {
-        const query = `select 
-                        a."id",
-                        a."title",
-                        a."image",
-                        a."paragraph",
-                        a."articleInfoId" 
-                    from "tblArticles" a 
-                    inner join "tblArticleInfo" ai 
-                        on ai."id" = a."articleInfoId" 
-                        where ai."name" = $1 and a."id" = $2::uuid`;
-        const parameters = [req.params.name, req.params.id];
+        const query = `SELECT 	a."id",
+                                a."title",
+                                a."paragraph",
+                                a."articleInfoId", 
+                                i."path" 
+                       FROM "tblArticles" a
+                            JOIN "tblImages" i 
+                                on a."essenceToImageId" = i."essenceToImageId"
+                            JOIN "tblArticleInfo" ai 
+                                ON ai."id" = a."articleInfoId" 
+                            where ai."name" = $1 and a."id" = $2::uuid and i."size" = $3`;
+        const parameters = [req.params.name, req.params.id, req.param('imgSize', 'S')];
 
+        try {
+            client.query(query, parameters, function(err, result) {
+                if (err) {
+                    res.send(err);
+                } else {
+                    res.send(result.rows[0]);
+                }
+            });
+        } finally {
+            done(err);
+        }
+    });
+});
+
+router.patch('/:id', function(req, res, next) {
+    pool.connect(function(err, client, done) {
+        const query = `UPDATE "tblArticles"
+	                        SET "essenceToImageId" = $2
+	                    WHERE "id" = $1`;
+        const parameters = [req.params.id, req.body.essenceToImageId];
         try {
             client.query(query, parameters, function(err, result) {
                 if (err) {

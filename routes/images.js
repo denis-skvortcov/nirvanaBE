@@ -39,15 +39,11 @@ const directory = {
     [articlesDirectoryName]: `./${publicDirectoryName}/${imgDirectoryName}/${articlesDirectoryName}`
 };
 
-function parsetListFiles(filesList) {
-    return Promise.all(Object.values(filesList).map((file) => saveFile(file)));
-}
-
 class Deferred {
     constructor(asyncMethod, ...methodsParameters) {
         const vm = this;
         Object.assign(vm, {
-            promise: new Promise(vm.executor.bind(this)),
+            promise: new Promise(vm.executor.bind(this))
         });
         vm.executeExternalMethod(asyncMethod, ...methodsParameters);
     }
@@ -85,15 +81,18 @@ class ReverseDeferred extends Deferred {
     }
 }
 
+function parsetListFiles(filesList) {
+    return Promise.all(Object.values(filesList).map((file) => saveFile(file)));
+}
+
 function saveFile(file) {
     const directoryOriginal = `./${publicDirectoryName}/${imgDirectoryName}/${originalDirectoryName}`;
     return createDirectory(directoryOriginal).then(() => {
-        const originameFileName = file.name;
-        const fileName = originameFileName.replace(path.extname(originameFileName), '');
-        return new Deferred(file.mv, `${directoryOriginal}/${originameFileName}`).promise.then(() => {
+        const originalFileName = file.name;
+        return new Deferred(file.mv, `${directoryOriginal}/${originalFileName}`).promise.then(() => {
             const directoryResizeImage = `./${publicDirectoryName}/${imgDirectoryName}/` + String(Math.random()).substr(2);
             return createDirectory(directoryResizeImage).then(() => {
-                return createResizeImage(sharp(file.data), directoryResizeImage, fileName);
+                return createResizeImage(sharp(file.data), directoryResizeImage, originalFileName);
             });
         });
     });
@@ -120,8 +119,9 @@ function getResizedFileName(directory, imageName, newSize) {
     return `${directory}/${imageName}-${newSize}.${outputFileType}`;
 }
 
-function createResizeImage(image, directory, fileName) {
+function createResizeImage(image, directory, originalFileName) {
     return image.metadata().then((imageOrigin) => {
+        const fileName = originalFileName.replace(path.extname(originalFileName), '');
         const maxDimension = Math.max(imageOrigin.width, imageOrigin.height);
         const width = maxDimension === imageOrigin.width && imageOrigin.width;
         const height = maxDimension === imageOrigin.height && imageOrigin.height;
@@ -137,42 +137,44 @@ function createResizeImage(image, directory, fileName) {
             filesInfoCollection.push({imagePathOpen, sizeName});
             image[outputFileType]().toFile(imagePath);
         });
-        return {filesInfoCollection, originalFileName: fileName};
+        return {filesInfoCollection, originalFileName};
     });
 }
 
-function saveFilesListToDatabase(filesList, res, parameterCollection) {
-    const originalFileNamesList = [];
+function saveFilesListToDatabase(filesList, res) {
+    const originalFileList = [];
     const newFilesList = {};
     const fieldIdMarker = '<fileIdPlace>';
 
     filesList.forEach((fileInfo) => {
-        originalFileNamesList.push(`('${fileInfo.originalFileName}')`);
-        newFilesList[fileInfo.originalFileName] = fileInfo.filesInfoCollection.map((newFile) => {
+        const pathOriginalFile = `/${imgDirectoryName}/${originalDirectoryName}/${fileInfo.originalFileName}`;
+        const fileName = fileInfo.originalFileName.replace(path.extname(fileInfo.originalFileName), '');
+        originalFileList.push(`('${fileName}', '${pathOriginalFile}')`);
+        newFilesList[fileName] = fileInfo.filesInfoCollection.map((newFile) => {
             return `('${newFile.imagePathOpen}', '${newFile.sizeName}', '${fieldIdMarker}')`;
         });
     });
-    const essenceToImageQuery = `insert into "tblEssenceToImage" ("originalFileName")
-                                    values ${originalFileNamesList.join(', ')}
+    const essenceToImageQuery = `insert into "tblEssenceToImage" ("originalFileName", "path")
+                                    values ${originalFileList.join(', ')}
                                     returning "id", "originalFileName"`;
     pool.connect((err, client, done) => {
         client.query(essenceToImageQuery, []).then((result) => {
             let query = 'insert into "tblImages" ("path", "size", "essenceToImageId") values ';
-            const insertedRows = result.rows.map((row) => {
+            const imageToEssenceList = result.rows;
+            imageToEssenceList.forEach((row) => {
                 const values = newFilesList[row.originalFileName].map((newFile) => {
                     return newFile.replace(fieldIdMarker, row.id);
                 });
                 query += `${values.join(', ')}, `;
-                return row.id;
             });
             query = `${query.substr(0, query.length - 2)}`;
-            console.log(query);
-            return client.query(query, []).then(() => res.send(insertedRows));
+            return client.query(query, []).then(() => res.send(imageToEssenceList));
+        //    TODO: Event or Endpoint 
         }).catch((err) => res.status(500).send(err));
     });
 }
 
-router.post('/', function (req, res, next) {
+router.post('/', function(req, res, next) {
     if (!req.files) {
         return res.status(400).send('No files were uploaded.');
     }
@@ -182,7 +184,6 @@ router.post('/', function (req, res, next) {
     const checkFilesList = (directoryName) => Object.values(filesList).forEach((file) => {
         resourcePromises.push(isResourceExists(`${directoryName}/${file.name}`));
     });
-    //const parameterCollection = [req.param('collectionType'), req.param('collectionName')];
     Object.values(directory).forEach(checkFilesList);
     Promise.all(resourcePromises)
         .then(() => {
@@ -201,58 +202,35 @@ router.post('/', function (req, res, next) {
         });
 });
 
-router.get('/:name', function (req, res, next) {
-    pool.connect(function (err, client, done) {
-        const queryCount = `select cast(count(1) as integer) as "recordsCount"
-                          from "tblArticleInfo" ai
-                          inner join "tblArticles" a on a."articleInfoId" = ai."id"
-                          where ai."name" = $1`;
-        const parameterCount = [req.params.name];
-
-        const queryIds = `select a."id"
-                          from "tblArticleInfo" ai
-                          inner join "tblArticles" a on a."articleInfoId" = ai."id"
-                          where ai."name" = $1
-                          order by a."date" desc
-                          limit $2 offset $3`;
-        const parameterIds = [req.params.name, req.param('pageSize', 3), parseInt(req.param('pageNumber', 0)) * parseInt(req.param('pageSize', 3))];
-
+router.get('/', function(req, res, next) {
+    pool.connect(function(err, client, done) {
+        const query = `select "id", "originalFileName", "path"
+                       from "tblEssenceToImage"`;
         try {
-            Promise.all([
-                client.query(queryCount, parameterCount),
-                client.query(queryIds, parameterIds)
-            ]).then(([countResponse, idsResponse]) => {
-                res.send({
-                    recordsCount: countResponse.rows[0].recordsCount,
-                    records: idsResponse.rows
-                });
-            }).catch((err) => res.send(err));
+            client.query(query, [], function(err, result) {
+                if (err) {
+                    res.send(err);
+                } else {
+                    res.send(result.rows);
+                }
+            });
         } finally {
             done(err);
         }
     });
 });
 
-router.get('/:name/:id', function (req, res, next) {
-    pool.connect(function (err, client, done) {
-        const query = `select 
-                        a."id",
-                        a."title",
-                        a."image",
-                        a."paragraph",
-                        a."articleInfoId" 
-                    from "tblArticles" a 
-                    inner join "tblArticleInfo" ai 
-                        on ai."id" = a."articleInfoId" 
-                        where ai."name" = $1 and a."id" = $2::uuid`;
-        const parameters = [req.params.name, req.params.id];
-
+router.get('/:id', function(req, res, next) {
+    pool.connect(function(err, client, done) {
+        const query = `select "id", "originalFileName", "path"
+                       from "tblEssenceToImage"
+                       where "id" = $1`;
         try {
-            client.query(query, parameters, function (err, result) {
+            client.query(query, [req.params.id], function(err, result) {
                 if (err) {
                     res.send(err);
                 } else {
-                    res.send(result.rows[0]);
+                    res.send(result.rows);
                 }
             });
         } finally {
