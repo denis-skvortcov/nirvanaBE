@@ -61,17 +61,20 @@ router.get('/:name', function(req, res, next) {
 
 router.get('/:name/:id', function(req, res, next) {
     pool.connect(function(err, client, done) {
-        const query = `SELECT 	a."id",
-                                a."title",
-                                a."paragraph",
-                                a."articleInfoId", 
-                                i."path" 
-                       FROM "tblArticles" a
+        const query = `SELECT 	ar."id",
+                                ar."title",
+                                ar."paragraph",
+                                ar."articleInfoId",
+                                i."path",
+                                ac."action"
+                       FROM "tblArticles" ar
                             JOIN "tblImages" i 
-                                on a."essenceToImageId" = i."essenceToImageId"
-                            JOIN "tblArticleInfo" ai 
-                                ON ai."id" = a."articleInfoId" 
-                            where ai."name" = $1 and a."id" = $2::uuid and i."size" = $3`;
+                                on ar."essenceToImageId" = i."essenceToImageId"
+                            JOIN "tblArticleInfo" ai
+                                ON ar."articleInfoId" = ai."id"
+                            JOIN "tblAction" ac
+                                ON ac."id" = ar."actionId"
+                       WHERE ai."name" = $1 and ar."id" = $2 and i."size" = $3`;
         const parameters = [req.params.name, req.params.id, req.param('imgSize', 'S')];
 
         try {
@@ -91,8 +94,8 @@ router.get('/:name/:id', function(req, res, next) {
 router.patch('/:id', function(req, res, next) {
     pool.connect(function(err, client, done) {
         const query = `UPDATE "tblArticles"
-	                        SET "essenceToImageId" = $2
-	                    WHERE "id" = $1`;
+	                        SET "essenceToImageId" = $2::uuid
+	                    WHERE "id" = $1::uuid`;
         const parameters = [req.params.id, req.body.essenceToImageId];
         try {
             client.query(query, parameters, function(err, result) {

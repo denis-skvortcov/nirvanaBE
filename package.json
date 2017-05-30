@@ -9,7 +9,6 @@
   "dependencies": {
     "body-parser": "^1.16.1",
     "cookie-parser": "~1.4.3",
-    "debug": "~2.6.0",
     "express": "~4.14.1",
     "express-fileupload": "^0.1.2",
     "morgan": "~1.7.0",
@@ -21,6 +20,8 @@
     "sharp": "^0.17.2"
   },
   "devDependencies": {
-    "eslint": "^3.18.0"
+    "debug": "~2.6.0",
+    "eslint": "^3.18.0",
+    "inspect-process": "^0.4.2"
   }
 }

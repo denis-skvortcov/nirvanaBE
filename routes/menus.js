@@ -34,37 +34,57 @@ function sort(subMenu, parentId) {
         return rootMenu;
     }
 }
-router.get('/:name/:relation', function(req, res, next) {
-    const queryByMainMenuId = `
-        WITH RECURSIVE "tblSubMenu" AS (
-            SELECT m.*, 1 as "level"
-            FROM "tblMenu" m
-            WHERE m."parentId" is not null and m."parentId" = $1::uuid
-            UNION
-            SELECT m.*, "level" + 1 
-            FROM "tblMenu" m, "tblSubMenu" ms
-            WHERE m."parentId" = ms."id"
-        )
-        SELECT ms."id", ms."parentId", ms."title", ms."actionType", ms."action", ms."level" FROM "tblSubMenu" ms
-        inner join "tblMenuInfo" mi on mi."id" = ms."menuInfoId"
-        order by "title"`;
 
+function getOperator(parameter) {
+    const operators = {
+        equal: '=',
+        lessOrEqual: '<=',
+        moreOrEqual: '>='
+    };
+    const operatorsMap = {
+        equal: 'equal',
+        'less-or-equal': 'lessOrEqual',
+        'more-or-equal': 'moreOrEqual'
+    };
+    return operators[operatorsMap[parameter]];
+}
+
+function getParentId(parentId) {
+    return parentId === null ? parentId : `'${parentId}'`;
+}
+
+router.get('/:name', function(req, res, next) {
+    const operator = getOperator(req.param('operator', 'equal'));
+    const operatorValue = req.param('level', 0);
+    const parentId = getParentId(req.param('parentId', null));
+    const levelStr = `ms."level" ${operator} ${operatorValue}`;
+    const query = `
+        WITH RECURSIVE "tblSubMenu" AS (
+            SELECT m.*, 0 as "level"
+                FROM "tblMenu" m
+                WHERE (${parentId} is null and m."parentId" is null or m."parentId" = ${parentId}::uuid)
+            UNION
+            
+            SELECT m.*, "level" + 1 
+                FROM "tblMenu" m, "tblSubMenu" ms
+                WHERE m."parentId" = ms."id"
+        )
+        SELECT ms."id", ms."parentId", ms."title", a."actionType", a."action", ms."level" 
+            FROM "tblSubMenu" ms
+                JOIN "tblMenuInfo" mi
+                     ON mi."id" = ms."menuInfoId"
+                JOIN "tblAction" a
+                     ON a."id" = ms."actionId"
+            WHERE ${levelStr} AND mi."name" = $1
+        ORDER BY "level"`;
+-
     pool.connect(function(err, client, done) {
-        var query = `select m."action", m."actionType", m."id", m."title" from "tblMenu" m 
-                        inner join "tblMenuInfo" mi on mi."id" = m."menuInfoId" 
-                            where mi."name" = $1 and m."parentId" is null`;
-        var parameters = [req.params.name];
-        if (req.params.relation !== 'root') {
-            query = queryByMainMenuId;
-            parameters = [req.params.relation]
-        }
         try {
-            client.query(query, parameters, function(err, result) {
+            client.query(query, [req.params.name], function(err, result) {
                 if (err) {
                     res.send(err);
                 } else {
-                    res.send(sort(result.rows, parameters[0]));
-                    // res.send(result.rows);
+                    res.send(result.rows);
                 }
             });
         } finally {

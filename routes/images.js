@@ -136,7 +136,7 @@ function createResizeImage(image, directory, originalFileName) {
             const imagePathOpen = imagePath.replace(`./${publicDirectoryName}`, '');
             filesInfoCollection.push({imagePathOpen, sizeName});
             image[outputFileType]().toFile(imagePath);
-        });
+            });
         return {filesInfoCollection, originalFileName};
     });
 }
@@ -169,7 +169,7 @@ function saveFilesListToDatabase(filesList, res) {
             });
             query = `${query.substr(0, query.length - 2)}`;
             return client.query(query, []).then(() => res.send(imageToEssenceList));
-        //    TODO: Event or Endpoint 
+            //    TODO: Event or Endpoint
         }).catch((err) => res.status(500).send(err));
     });
 }
@@ -202,12 +202,12 @@ router.post('/', function(req, res, next) {
         });
 });
 
-router.get('/', function(req, res, next) {
-    pool.connect(function(err, client, done) {
+router.get('/', function (req, res, next) {
+    pool.connect(function (err, client, done) {
         const query = `select "id", "originalFileName", "path"
                        from "tblEssenceToImage"`;
         try {
-            client.query(query, [], function(err, result) {
+            client.query(query, [], function (err, result) {
                 if (err) {
                     res.send(err);
                 } else {
@@ -220,22 +220,14 @@ router.get('/', function(req, res, next) {
     });
 });
 
-router.get('/:id', function(req, res, next) {
-    pool.connect(function(err, client, done) {
+router.get('/:id', function (req, res, next) {
+    pool.connect(function (err, client, done) {
         const query = `select "id", "originalFileName", "path"
                        from "tblEssenceToImage"
-                       where "id" = $1`;
-        try {
-            client.query(query, [req.params.id], function(err, result) {
-                if (err) {
-                    res.send(err);
-                } else {
-                    res.send(result.rows);
-                }
-            });
-        } finally {
-            done(err);
-        }
+                       where "id" = $1::uuid`;
+        client.query(query, [req.params.id])
+            .then((result) => res.send(result.rows))
+            .catch((err) => res.send(err));
     });
 });
 
