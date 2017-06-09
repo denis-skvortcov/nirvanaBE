@@ -12,12 +12,24 @@ const config = {
 
 const pool = new pg.Pool(config);
 
-router.get('/', function(req, res, next) {
-    pool.connect(function(err, client, done) {
-        client.query('select "id", "name" from "tblMenuInfo"', function(err, result) {
-            done(err);
-            res.send(result.rows);
-        });
+router.get('/', (req, res, next) => {
+    pool.connect((err, client, done) => {
+        const query = `
+SELECT
+    "id",
+    "name"
+FROM "tblMenuInfo"`;
+        const parameters = [];
+
+        client.query(query, parameters)
+            .then((result) => {
+                done(err);
+                res.send(result.rows);
+            })
+            .catch((err) => {
+                done(err);
+                res.send(err);
+            });
     });
 });
 function sort(subMenu, parentId) {
@@ -53,43 +65,57 @@ function getParentId(parentId) {
     return parentId === null ? parentId : `'${parentId}'`;
 }
 
-router.get('/:name', function(req, res, next) {
-    const operator = getOperator(req.param('operator', 'equal'));
-    const operatorValue = req.param('level', 0);
-    const parentId = getParentId(req.param('parentId', null));
-    const levelStr = `ms."level" ${operator} ${operatorValue}`;
-    const query = `
-        WITH RECURSIVE "tblSubMenu" AS (
-            SELECT m.*, 0 as "level"
-                FROM "tblMenu" m
-                WHERE (${parentId} is null and m."parentId" is null or m."parentId" = ${parentId}::uuid)
-            UNION
-            
-            SELECT m.*, "level" + 1 
-                FROM "tblMenu" m, "tblSubMenu" ms
-                WHERE m."parentId" = ms."id"
-        )
-        SELECT ms."id", ms."parentId", ms."title", a."actionType", a."action", ms."level" 
-            FROM "tblSubMenu" ms
-                JOIN "tblMenuInfo" mi
-                     ON mi."id" = ms."menuInfoId"
-                JOIN "tblAction" a
-                     ON a."id" = ms."actionId"
-            WHERE ${levelStr} AND mi."name" = $1
-        ORDER BY "level"`;
--
-    pool.connect(function(err, client, done) {
-        try {
-            client.query(query, [req.params.name], function(err, result) {
-                if (err) {
-                    res.send(err);
-                } else {
-                    res.send(result.rows);
-                }
+router.get('/:name', (req, res, next) => {
+    pool.connect((err, client, done) => {
+        const operator = getOperator(req.query.operator || 'equal');
+        const operatorValue = req.query.level || 0;
+        const parentId = getParentId(req.query.parentId || null);
+        const levelStr = `ms."level" ${operator} ${operatorValue}`;
+        const query = `
+WITH RECURSIVE "tblSubMenu"
+    AS(
+        SELECT
+            m.*,
+            0 as "level"
+        FROM "tblMenu" m
+        WHERE
+            (${parentId} IS null AND m."parentId" IS null
+            OR m."parentId" = ${parentId}::uuid)
+    UNION            
+        SELECT
+            m.*,
+            "level" + 1 
+        FROM
+            "tblMenu" m,
+            "tblSubMenu" ms
+        WHERE m."parentId" = ms."id"
+    )
+SELECT
+    ms."id",
+    ms."parentId",
+    ms."title",
+    a."actionType",
+    a."action",
+    ms."level" 
+FROM "tblSubMenu" ms
+    JOIN "tblMenuInfo" mi
+        ON mi."id" = ms."menuInfoId"
+    JOIN "tblAction" a
+        ON a."id" = ms."actionId"
+WHERE
+    ${levelStr}
+    AND mi."name" = $1
+ORDER BY "level"`;
+        const parameters = [req.params.name];
+        client.query(query, parameters)
+            .then((result) => {
+                done(err);
+                res.send(result.rows);
+            })
+            .catch((err) => {
+                done(err);
+                res.send(err);
             });
-        } finally {
-            done(err);
-        }
     });
 });
 

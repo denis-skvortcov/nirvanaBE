@@ -12,46 +12,21 @@ var config = {
 
 var pool = new pg.Pool(config);
 
-router.get('/', (req, res, next) => {
-    pool.connect((err, client, done) => {
-        const query = `
-                        SELECT
-                            "id",
-                            "name"
-                        FROM "tblArticleInfo";`;
-        const parameters = [];
-
-        client.query(query, parameters)
-            .then((result) => {
-                done(err);
-                res.send(result.rows);
-            })
-            .catch((err) => {
-                done(err);
-                res.send(err);
-            });
-    });
-});
-
-router.get('/:name', (req, res, next) => {
+router.get('/:parentId', (req, res, next) => {
     pool.connect((err, client, done) => {
         const queryCount = `
 SELECT cast(count(1) AS integer) AS "recordsCount"
-FROM "tblArticleInfo" ai
-    JOIN "tblArticles" a
-        ON a."articleInfoId" = ai."id"
-WHERE ai."name" = $1;`;
+FROM "tblGallery" g
+WHERE g."parentId" = $1;`;
         const parameterCount = [req.params.name];
 
         const queryIds = `
-SELECT a."id"
-FROM "tblArticleInfo" ai
-    JOIN "tblArticles" a
-        ON a."articleInfoId" = ai."id"
-WHERE ai."name" = $1
-ORDER BY a."date" DESC
+SELECT g."id"
+FROM "tblGallery" g
+WHERE g."parentId" = $1
+ORDER BY g."date" DESC
 LIMIT $2 OFFSET $3;`;
-        const parameterIds = [req.params.name, req.query.pageSize || 3, parseInt(req.query.pageNumber || 0) * parseInt(req.query.pageSize || 3)];
+        const parameterIds = [req.params.parentId, req.query.pageSize || 3, parseInt(req.query.pageNumber || 0) * parseInt(req.query.pageSize || 3)];
 
         Promise.all([
             client.query(queryCount, parameterCount),
@@ -72,24 +47,24 @@ LIMIT $2 OFFSET $3;`;
 router.get('/:name/:id', (req, res, next) => {
     pool.connect((err, client, done) => {
         const query = `
-                        SELECT
-                            ar."id",
-                            ar."title",
-                            ar."paragraph",
-                            ar."articleInfoId",
-                            i."path",
-                            ac."action"
-                        FROM "tblArticles" ar
-                            JOIN "tblImages" i 
-                                ON ar."essenceToImageId" = i."essenceToImageId"
-                            JOIN "tblArticleInfo" ai
-                                ON ar."articleInfoId" = ai."id"
-                            JOIN "tblAction" ac
-                                ON ac."id" = ar."actionId"
-                        WHERE
-                            ai."name" = $1
-                            AND ar."id" = $2::uuid
-                            AND i."size" = $3;`;
+SELECT
+    ar."id",
+    ar."title",
+    ar."paragraph",
+    ar."articleInfoId",
+    i."path",
+    ac."action"
+FROM "tblArticles" ar
+    JOIN "tblImages" i 
+        ON ar."essenceToImageId" = i."essenceToImageId"
+    JOIN "tblArticleInfo" ai
+        ON ar."articleInfoId" = ai."id"
+    JOIN "tblAction" ac
+        ON ac."id" = ar."actionId"
+WHERE
+    ai."name" = $1
+    AND ar."id" = $2::uuid
+    AND i."size" = $3;`;
         const parameters = [req.params.name, req.params.id, req.query.imgSize || 'S'];
 
         client.query(query, parameters)
@@ -107,9 +82,9 @@ router.get('/:name/:id', (req, res, next) => {
 router.patch('/:id', (req, res, next) => {
     pool.connect((err, client, done) => {
         const query = `
-                        UPDATE "tblArticles"
-	                        SET "essenceToImageId" = $2::uuid
-	                    WHERE "id" = $1::uuid;`;
+UPDATE "tblArticles"
+    SET "essenceToImageId" = $2::uuid
+WHERE "id" = $1::uuid;`;
         const parameters = [req.params.id, req.body.essenceToImageId];
 
         client.query(query, parameters)

@@ -136,7 +136,7 @@ function createResizeImage(image, directory, originalFileName) {
             const imagePathOpen = imagePath.replace(`./${publicDirectoryName}`, '');
             filesInfoCollection.push({imagePathOpen, sizeName});
             image[outputFileType]().toFile(imagePath);
-            });
+        });
         return {filesInfoCollection, originalFileName};
     });
 }
@@ -154,12 +154,22 @@ function saveFilesListToDatabase(filesList, res) {
             return `('${newFile.imagePathOpen}', '${newFile.sizeName}', '${fieldIdMarker}')`;
         });
     });
-    const essenceToImageQuery = `insert into "tblEssenceToImage" ("originalFileName", "path")
-                                    values ${originalFileList.join(', ')}
-                                    returning "id", "originalFileName"`;
+    const essenceToImageQuery = `
+INSERT INTO "tblEssenceToImage" (
+    "originalFileName",
+    "path"
+) VALUES ${originalFileList.join(', ')}
+RETURNING
+    "id",
+    "originalFileName";`;
     pool.connect((err, client, done) => {
         client.query(essenceToImageQuery, []).then((result) => {
-            let query = 'insert into "tblImages" ("path", "size", "essenceToImageId") values ';
+            let query = `
+INSERT INTO "tblImages" (
+    "path",
+    "size",
+    "essenceToImageId"
+) VALUES;`;
             const imageToEssenceList = result.rows;
             imageToEssenceList.forEach((row) => {
                 const values = newFilesList[row.originalFileName].map((newFile) => {
@@ -174,7 +184,7 @@ function saveFilesListToDatabase(filesList, res) {
     });
 }
 
-router.post('/', function(req, res, next) {
+router.post('/', function (req, res, next) {
     if (!req.files) {
         return res.status(400).send('No files were uploaded.');
     }
@@ -191,43 +201,59 @@ router.post('/', function(req, res, next) {
             Promise.all(directoriesPromises)
                 .then(() => parsetListFiles(filesList))
                 .then((filesListInfo) => saveFilesListToDatabase(filesListInfo, res))
-                .catch((error) => {
+                .catch((err) => {
                     // TODO: send 500 unexpected behaviour, write to log!!!
                     return res.status(500).send(saveError);
                 });
         })
-        .catch((error) => {
+        .catch((err) => {
             // TODO: send error original directory exists if needed or only write to log
             return res.status(500).send(saveError);
         });
 });
 
-router.get('/', function (req, res, next) {
-    pool.connect(function (err, client, done) {
-        const query = `select "id", "originalFileName", "path"
-                       from "tblEssenceToImage"`;
-        try {
-            client.query(query, [], function (err, result) {
-                if (err) {
-                    res.send(err);
-                } else {
-                    res.send(result.rows);
-                }
+router.get('/', (req, res, next) => {
+    pool.connect((err, client, done) => {
+        const query = `
+SELECT
+    "id",
+    "originalFileName",
+    "path"
+FROM "tblEssenceToImage";`;
+        const parameters = [];
+
+        client.query(query, parameters)
+            .then((result) => {
+                done(err);
+                res.send(result.rows);
+            })
+            .catch((err) => {
+                done(err);
+                res.send(err);
             });
-        } finally {
-            done(err);
-        }
     });
 });
 
-router.get('/:id', function (req, res, next) {
-    pool.connect(function (err, client, done) {
-        const query = `select "id", "originalFileName", "path"
-                       from "tblEssenceToImage"
-                       where "id" = $1::uuid`;
-        client.query(query, [req.params.id])
-            .then((result) => res.send(result.rows))
-            .catch((err) => res.send(err));
+router.get('/:id', (req, res, next) => {
+    pool.connect((err, client, done) => {
+        const query = `
+SELECT
+    "id",
+    "originalFileName",
+    "path"
+FROM "tblEssenceToImage"
+WHERE "id" = $1::uuid;`;
+        const parameters = [req.params.id];
+
+        client.query(query, parameters)
+            .then((result) => {
+                done(err);
+                res.send(result.rows);
+            })
+            .catch((err) => {
+                done(err);
+                res.send(err);
+            });
     });
 });
 
